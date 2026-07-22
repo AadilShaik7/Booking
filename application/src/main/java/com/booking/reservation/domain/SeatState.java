@@ -13,28 +13,36 @@ public record SeatState(
         CustomerId owner
         )
 {
-        public SeatState {
-            Objects.requireNonNull(eventId, "Event Id cannot be null");
-            Objects.requireNonNull(seatId, "Seat Id cannot be null");
-            Objects.requireNonNull(status, "Seat Status cannot be null");
-            if (status == SeatStatus.AVAILABLE) {
-                if (holdId != null || owner != null) {
-                    throw new IllegalArgumentException("An available seat cannot be held or have an owner");
-                }
-            }
-            if (status != SeatStatus.AVAILABLE) {
-                if (holdId != null || owner != null) {
-                    throw new IllegalArgumentException("An held seat must have hold Id or owner");
-                }
+    public SeatState {
+        Objects.requireNonNull(eventId, "Event ID must not be null");
+        Objects.requireNonNull(seatId, "Seat ID must not be null");
+        Objects.requireNonNull(status, "Seat status must not be null");
+
+        if (status == SeatStatus.AVAILABLE) {
+            if (holdId != null || owner != null) {
+                throw new IllegalArgumentException(
+                        "An available seat cannot have a hold ID or owner"
+                );
             }
         }
+
+        if (status == SeatStatus.HELD
+                || status == SeatStatus.BOOKED) {
+
+            if (holdId == null || owner == null) {
+                throw new IllegalArgumentException(
+                        "A held or booked seat must have both a hold ID and owner"
+                );
+            }
+        }
+    }
 
         public static SeatState available(EventId eventId, SeatId seatId) {
             return new SeatState(eventId, seatId, SeatStatus.AVAILABLE, null, null);
         }
 
         public SeatState hold(HoldId newHoldId, CustomerId customerId) {
-            Objects.requireNonNull(holdId, "Hold Id cannot be null");
+            Objects.requireNonNull(newHoldId, "Hold Id cannot be null");
             Objects.requireNonNull(customerId, "Customer Id cannot be null");
             if (status != SeatStatus.AVAILABLE) {
                 throw new SeatUnavailableException(seatId);
