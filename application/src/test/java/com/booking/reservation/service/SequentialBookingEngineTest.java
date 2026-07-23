@@ -1,9 +1,8 @@
 package com.booking.reservation.service;
 
-import com.booking.reservation.domain.CustomerId;
-import com.booking.reservation.domain.EventId;
-import com.booking.reservation.domain.SeatId;
-import com.booking.reservation.domain.SeatStatus;
+import com.booking.reservation.domain.*;
+import com.booking.reservation.exception.HoldOwnershipException;
+import com.booking.reservation.exception.InvalidHoldStateException;
 import com.booking.reservation.exception.SeatNotFoundException;
 import com.booking.reservation.exception.SeatUnavailableException;
 import org.junit.jupiter.api.Test;
@@ -178,6 +177,344 @@ public class SequentialBookingEngineTest {
         assertEquals(
                 SeatStatus.HELD,
                 engine.seatStatus(seatThree)
+        );
+    }
+
+    @Test
+    void holdOwnerCanConfirmBooking() {
+        SequentialBookingEngine engine =
+                new SequentialBookingEngine();
+
+        EventId eventId = EventId.random();
+        CustomerId customerId = CustomerId.random();
+
+        SeatId seatOne = SeatId.random();
+        SeatId seatTwo = SeatId.random();
+
+        engine.registerEvent(
+                eventId,
+                Set.of(seatOne, seatTwo)
+        );
+
+        SeatHold hold = engine.holdSeats(
+                eventId,
+                customerId,
+                Set.of(seatOne, seatTwo)
+        );
+
+        Booking booking = engine.confirmHold(
+                hold.id(),
+                customerId
+        );
+
+        assertEquals(hold.id(), booking.holdId());
+        assertEquals(eventId, booking.eventId());
+        assertEquals(customerId, booking.customerId());
+        assertEquals(
+                Set.of(seatOne, seatTwo),
+                booking.seatIds()
+        );
+
+        assertEquals(
+                SeatStatus.BOOKED,
+                engine.seatStatus(seatOne)
+        );
+
+        assertEquals(
+                SeatStatus.BOOKED,
+                engine.seatStatus(seatTwo)
+        );
+
+        assertEquals(
+                HoldStatus.CONFIRMED,
+                engine.holdStatus(hold.id())
+        );
+    }
+
+    @Test
+    void anotherCustomerCannotConfirmHold() {
+        SequentialBookingEngine engine =
+                new SequentialBookingEngine();
+
+        EventId eventId = EventId.random();
+        SeatId seatId = SeatId.random();
+
+        CustomerId owner = CustomerId.random();
+        CustomerId otherCustomer = CustomerId.random();
+
+        engine.registerEvent(
+                eventId,
+                Set.of(seatId)
+        );
+
+        SeatHold hold = engine.holdSeats(
+                eventId,
+                owner,
+                Set.of(seatId)
+        );
+
+        assertThrows(
+                HoldOwnershipException.class,
+                () -> engine.confirmHold(
+                        hold.id(),
+                        otherCustomer
+                )
+        );
+
+        assertEquals(
+                SeatStatus.HELD,
+                engine.seatStatus(seatId)
+        );
+
+        assertEquals(
+                HoldStatus.ACTIVE,
+                engine.holdStatus(hold.id())
+        );
+
+        assertEquals(
+                0,
+                engine.bookingCount()
+        );
+    }
+
+    @Test
+    void holdOwnerCanCancelHold() {
+        SequentialBookingEngine engine =
+                new SequentialBookingEngine();
+
+        EventId eventId = EventId.random();
+        CustomerId customerId = CustomerId.random();
+
+        SeatId seatOne = SeatId.random();
+        SeatId seatTwo = SeatId.random();
+
+        engine.registerEvent(
+                eventId,
+                Set.of(seatOne, seatTwo)
+        );
+
+        SeatHold hold = engine.holdSeats(
+                eventId,
+                customerId,
+                Set.of(seatOne, seatTwo)
+        );
+
+        engine.cancelHold(
+                hold.id(),
+                customerId
+        );
+
+        assertEquals(
+                SeatStatus.AVAILABLE,
+                engine.seatStatus(seatOne)
+        );
+
+        assertEquals(
+                SeatStatus.AVAILABLE,
+                engine.seatStatus(seatTwo)
+        );
+
+        assertEquals(
+                HoldStatus.CANCELLED,
+                engine.holdStatus(hold.id())
+        );
+
+        assertEquals(
+                0,
+                engine.bookingCount()
+        );
+    }
+
+    @Test
+    void anotherCustomerCannotCancelHold() {
+        SequentialBookingEngine engine =
+                new SequentialBookingEngine();
+
+        EventId eventId = EventId.random();
+        SeatId seatId = SeatId.random();
+
+        CustomerId owner = CustomerId.random();
+        CustomerId otherCustomer = CustomerId.random();
+
+        engine.registerEvent(
+                eventId,
+                Set.of(seatId)
+        );
+
+        SeatHold hold = engine.holdSeats(
+                eventId,
+                owner,
+                Set.of(seatId)
+        );
+
+        assertThrows(
+                HoldOwnershipException.class,
+                () -> engine.cancelHold(
+                        hold.id(),
+                        otherCustomer
+                )
+        );
+
+        assertEquals(
+                SeatStatus.HELD,
+                engine.seatStatus(seatId)
+        );
+
+        assertEquals(
+                HoldStatus.ACTIVE,
+                engine.holdStatus(hold.id())
+        );
+    }
+
+    @Test
+    void confirmedHoldCannotBeCancelled() {
+        SequentialBookingEngine engine =
+                new SequentialBookingEngine();
+
+        EventId eventId = EventId.random();
+        CustomerId customerId = CustomerId.random();
+        SeatId seatId = SeatId.random();
+
+        engine.registerEvent(
+                eventId,
+                Set.of(seatId)
+        );
+
+        SeatHold hold = engine.holdSeats(
+                eventId,
+                customerId,
+                Set.of(seatId)
+        );
+
+        engine.confirmHold(
+                hold.id(),
+                customerId
+        );
+
+        assertThrows(
+                InvalidHoldStateException.class,
+                () -> engine.cancelHold(
+                        hold.id(),
+                        customerId
+                )
+        );
+
+        assertEquals(
+                SeatStatus.BOOKED,
+                engine.seatStatus(seatId)
+        );
+
+        assertEquals(
+                HoldStatus.CONFIRMED,
+                engine.holdStatus(hold.id())
+        );
+
+        assertEquals(
+                1,
+                engine.bookingCount()
+        );
+    }
+
+    @Test
+    void cancelledHoldCannotBeConfirmed() {
+        SequentialBookingEngine engine =
+                new SequentialBookingEngine();
+
+        EventId eventId = EventId.random();
+        CustomerId customerId = CustomerId.random();
+        SeatId seatId = SeatId.random();
+
+        engine.registerEvent(
+                eventId,
+                Set.of(seatId)
+        );
+
+        SeatHold hold = engine.holdSeats(
+                eventId,
+                customerId,
+                Set.of(seatId)
+        );
+
+        engine.cancelHold(
+                hold.id(),
+                customerId
+        );
+
+        assertThrows(
+                InvalidHoldStateException.class,
+                () -> engine.confirmHold(
+                        hold.id(),
+                        customerId
+                )
+        );
+
+        assertEquals(
+                SeatStatus.AVAILABLE,
+                engine.seatStatus(seatId)
+        );
+
+        assertEquals(
+                HoldStatus.CANCELLED,
+                engine.holdStatus(hold.id())
+        );
+
+        assertEquals(
+                0,
+                engine.bookingCount()
+        );
+    }
+
+    @Test
+    void holdCannotBeConfirmedTwice() {
+        SequentialBookingEngine engine =
+                new SequentialBookingEngine();
+
+        EventId eventId = EventId.random();
+        CustomerId customerId = CustomerId.random();
+        SeatId seatId = SeatId.random();
+
+        engine.registerEvent(
+                eventId,
+                Set.of(seatId)
+        );
+
+        SeatHold hold = engine.holdSeats(
+                eventId,
+                customerId,
+                Set.of(seatId)
+        );
+
+        Booking booking = engine.confirmHold(
+                hold.id(),
+                customerId
+        );
+
+        assertThrows(
+                InvalidHoldStateException.class,
+                () -> engine.confirmHold(
+                        hold.id(),
+                        customerId
+                )
+        );
+
+        assertEquals(
+                SeatStatus.BOOKED,
+                engine.seatStatus(seatId)
+        );
+
+        assertEquals(
+                HoldStatus.CONFIRMED,
+                engine.holdStatus(hold.id())
+        );
+
+        assertEquals(
+                1,
+                engine.bookingCount()
+        );
+
+        assertEquals(
+                hold.id(),
+                booking.holdId()
         );
     }
 }
